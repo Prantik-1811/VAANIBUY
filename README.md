@@ -6,7 +6,7 @@ VaaniBuy is a local demo shopping assistant and mock commerce workflow built for
 - ask for shopping assistance in chat
 - generate an itemized proposal
 - require explicit approval before creating a simulated order
-- download a demo PDF receipt
+- download a demo PDF receipt.
 - check local voice configuration without exposing secrets
 
 This repository contains the full project under the `Hackathon-Launchpad-Local` folder.
