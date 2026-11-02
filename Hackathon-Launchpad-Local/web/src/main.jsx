@@ -13,8 +13,22 @@ async function request(path, options) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
+  const data = await readResponse(response);
+  return data;
+}
+
+async function readResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+  if (!response.ok) {
+    const detail = typeof data === "string" ? data.slice(0, 300) : data.detail;
+    throw new Error(detail || `Request failed (${response.status})`);
+  }
+  if (typeof data !== "object" || data === null) {
+    throw new Error("The API returned an unexpected non-JSON response.");
+  }
   return data;
 }
 
@@ -129,8 +143,7 @@ function App() {
     setStatus("Transcribing your voice and preparing a spoken answer...");
     try {
       const response = await fetch(`${API}/api/voice/turn`, { method: "POST", body: form });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || `Voice request failed (${response.status})`);
+      const data = await readResponse(response);
       setMessages((current) => [
         ...current,
         { role: "user", content: data.transcript },

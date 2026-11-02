@@ -46,7 +46,9 @@ The repository-root `vercel.json` configures the `api` service for FastAPI and
 the `web` service for Vite. `/api/*` and `/health` route to the API; all other
 paths route to the web app. Set `SARVAM_API_KEY` in the Vercel API service's
 environment variables. The browser uses same-origin API paths, so no service
-binding is needed.
+binding is needed. Vercel stores the demo SQLite database under `/tmp`, which
+is writable but ephemeral; use a hosted database before relying on persistent
+orders.
 
 ## Local API
 

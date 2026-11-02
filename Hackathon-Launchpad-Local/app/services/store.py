@@ -3,9 +3,18 @@ import sqlite3
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-DATABASE_PATH = Path(
-    os.getenv("VAANIBUY_DATABASE_PATH", ROOT_DIR / "data" / "vaanibuy.db")
-)
+
+
+def _database_path():
+    configured_path = os.getenv("VAANIBUY_DATABASE_PATH")
+    if configured_path:
+        return Path(configured_path)
+    if os.getenv("VERCEL"):
+        return Path("/tmp/vaanibuy.db")
+    return ROOT_DIR / "data" / "vaanibuy.db"
+
+
+DATABASE_PATH = _database_path()
 
 
 def connect():

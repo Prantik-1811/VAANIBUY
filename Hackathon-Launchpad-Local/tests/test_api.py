@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -118,3 +119,11 @@ def test_voice_turn_requires_model_key(monkeypatch):
         files={"audio": ("voice.webm", b"sample audio", "audio/webm")},
     )
     assert response.status_code == 503
+
+
+def test_database_uses_writable_tmp_path_on_vercel(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("VAANIBUY_DATABASE_PATH", raising=False)
+    assert store._database_path() == Path("/tmp/vaanibuy.db")
+    monkeypatch.setenv("VAANIBUY_DATABASE_PATH", "/tmp/custom.db")
+    assert store._database_path() == Path("/tmp/custom.db")
