@@ -166,7 +166,8 @@ async def voice_turn(
         raise HTTPException(status_code=503, detail="SARVAM_API_KEY is not configured")
     if language_code not in VOICE_LANGUAGES:
         raise HTTPException(status_code=422, detail="Unsupported voice language")
-    if audio.content_type not in VOICE_AUDIO_TYPES:
+    media_type = (audio.content_type or "").split(";", 1)[0].strip().lower()
+    if media_type not in VOICE_AUDIO_TYPES:
         raise HTTPException(status_code=415, detail="Unsupported audio format")
 
     audio_bytes = await audio.read(MAX_VOICE_UPLOAD_BYTES + 1)
@@ -183,7 +184,7 @@ async def voice_turn(
 
     client = get_sarvam_client()
     transcript = client.speech_to_text.transcribe(
-        file=(audio.filename or "voice.webm", audio_bytes, audio.content_type),
+        file=(audio.filename or "voice.webm", audio_bytes, media_type),
         model="saaras:v4",
         mode="transcribe",
         language_code=language_code,

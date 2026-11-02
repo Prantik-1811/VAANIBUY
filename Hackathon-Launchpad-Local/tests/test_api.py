@@ -98,7 +98,7 @@ def test_voice_turn_transcribes_answers_and_returns_speech(monkeypatch):
             "messages": '{"messages":[{"role":"user","content":"Hello"}]}',
             "language_code": "en-IN",
         },
-        files={"audio": ("voice.webm", b"sample audio", "audio/webm")},
+        files={"audio": ("voice.webm", b"sample audio", "audio/webm;codecs=opus")},
     )
 
     assert response.status_code == 200
@@ -106,6 +106,7 @@ def test_voice_turn_transcribes_answers_and_returns_speech(monkeypatch):
     assert response.json()["reply"] == "How much rice?"
     assert response.json()["audio_base64"] == "d2F2"
     assert calls["audio"]["model"] == "saaras:v4"
+    assert calls["audio"]["file"][2] == "audio/webm"
     assert calls["speech"]["model"] == "bulbul:v3"
 
 
