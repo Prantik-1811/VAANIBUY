@@ -40,6 +40,14 @@ recordings are limited to 25 seconds. Browser voice requires localhost or
 HTTPS. Product results, order placement, and payments are simulated; the
 explicit-approval flow never charges money.
 
+## Deploy on Vercel
+
+The repository-root `vercel.json` configures the `api` service for FastAPI and
+the `web` service for Vite. `/api/*` and `/health` route to the API; all other
+paths route to the web app. Set `SARVAM_API_KEY` in the Vercel API service's
+environment variables. The browser uses same-origin API paths, so no service
+binding is needed.
+
 ## Local API
 
 - `GET /api/products?q=rice` — search demo products.
