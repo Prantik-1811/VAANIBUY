@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
+from app.api import routes
 from app.main import app
 from app.services import store
 
@@ -57,6 +60,60 @@ def test_budget_and_unknown_product_are_rejected(tmp_path, monkeypatch):
             "address": "12 Demo Road, Bengaluru",
         }
         assert client.post("/api/proposals", json=payload).status_code == 422
+        payload["budget"] = 270
+        assert client.post("/api/proposals", json=payload).status_code == 422
         payload["budget"] = None
         payload["items"][0]["product_id"] = "not-a-product"
         assert client.post("/api/proposals", json=payload).status_code == 404
+
+
+def test_voice_turn_transcribes_answers_and_returns_speech(monkeypatch):
+    calls = {}
+
+    def transcribe(**kwargs):
+        calls["audio"] = kwargs
+        return SimpleNamespace(transcript="I need rice")
+
+    def complete(**kwargs):
+        calls["chat"] = kwargs
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="How much rice?"))]
+        )
+
+    def synthesize(**kwargs):
+        calls["speech"] = kwargs
+        return SimpleNamespace(audios=["d2F2"])
+
+    client = SimpleNamespace(
+        speech_to_text=SimpleNamespace(transcribe=transcribe),
+        chat=SimpleNamespace(completions=complete),
+        text_to_speech=SimpleNamespace(convert=synthesize),
+    )
+    monkeypatch.setattr(routes.settings, "SARVAM_API_KEY", "configured")
+    monkeypatch.setattr(routes, "get_sarvam_client", lambda: client)
+
+    response = TestClient(app).post(
+        "/api/voice/turn",
+        data={
+            "messages": '{"messages":[{"role":"user","content":"Hello"}]}',
+            "language_code": "en-IN",
+        },
+        files={"audio": ("voice.webm", b"sample audio", "audio/webm")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["transcript"] == "I need rice"
+    assert response.json()["reply"] == "How much rice?"
+    assert response.json()["audio_base64"] == "d2F2"
+    assert calls["audio"]["model"] == "saaras:v4"
+    assert calls["speech"]["model"] == "bulbul:v3"
+
+
+def test_voice_turn_requires_model_key(monkeypatch):
+    monkeypatch.setattr(routes.settings, "SARVAM_API_KEY", "")
+    response = TestClient(app).post(
+        "/api/voice/turn",
+        data={"messages": '{"messages":[]}', "language_code": "en-IN"},
+        files={"audio": ("voice.webm", b"sample audio", "audio/webm")},
+    )
+    assert response.status_code == 503

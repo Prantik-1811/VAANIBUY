@@ -10,13 +10,12 @@ provider or payment is connected.
 
    setup.cmd
 
-2. Add your Sarvam Model API key to `.env` for `test_sarvam.py`.
-   `.env` is ignored by git; never commit or share it.
-
-3. Add `SARVAM_API_KEY` to `.env` to enable the shopping assistant chat.
-   The separate `SARVAM_AGENT_ID` and `SAMVAAD_API_KEY` are for Samvaad voice.
-   Voice also requires the correct `SAMVAAD_ORG_ID` and
-   `SAMVAAD_WORKSPACE_ID`. Keep both API keys server-side.
+2. Add `SARVAM_API_KEY` to `.env` to enable the chat, voice assistant, and
+   `test_sarvam.py`. `.env` is ignored by git; never commit or share it. The voice
+   turn uses Saaras speech-to-text, Sarvam chat, and Bulbul text-to-speech;
+   the key stays on the backend. The separate `SARVAM_AGENT_ID`,
+   `SAMVAAD_API_KEY`, `SAMVAAD_ORG_ID`, and `SAMVAAD_WORKSPACE_ID` are for
+   managed Samvaad agent sessions.
 
 ## Run the backend
 
@@ -36,8 +35,10 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. Product results, order placement, and
-payments are simulated; the explicit-approval flow never charges money.
+Open the local URL printed by Vite. Allow microphone access and tap **Talk**;
+recordings are limited to 25 seconds. Browser voice requires localhost or
+HTTPS. Product results, order placement, and payments are simulated; the
+explicit-approval flow never charges money.
 
 ## Local API
 

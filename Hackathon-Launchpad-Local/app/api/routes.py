@@ -4,14 +4,14 @@ import uuid
 from io import BytesIO
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, Field, StrictBool, ValidationError
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from sarvamai import SarvamAI
 
 from app.services.catalog import PRODUCTS
+from app.services.sarvam import get_sarvam_client
 from app.services.store import connect
 from config import settings
 
@@ -41,6 +41,30 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=20)
+
+
+VOICE_LANGUAGES = {
+    "en-IN": "English",
+    "hi-IN": "Hindi",
+    "ta-IN": "Tamil",
+    "te-IN": "Telugu",
+    "bn-IN": "Bengali",
+    "kn-IN": "Kannada",
+    "ml-IN": "Malayalam",
+    "mr-IN": "Marathi",
+    "gu-IN": "Gujarati",
+    "pa-IN": "Punjabi",
+}
+MAX_VOICE_UPLOAD_BYTES = 10 * 1024 * 1024
+VOICE_AUDIO_TYPES = {
+    "audio/webm",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/ogg",
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/flac",
+}
 
 
 def _order_result(db, order_id):
@@ -82,6 +106,7 @@ def search_products(q: str = Query(default="", max_length=100)):
 @router.get("/voice/status")
 def voice_status():
     return {
+        "model_api_key_configured": bool(settings.SARVAM_API_KEY),
         "agent_id_configured": bool(settings.SARVAM_AGENT_ID),
         "api_key_configured": bool(settings.SAMVAAD_API_KEY),
         "organization_configured": bool(settings.SAMVAAD_ORG_ID),
@@ -97,18 +122,18 @@ def voice_status():
     }
 
 
-@router.post("/chat")
-def chat(request: ChatRequest):
+def _assistant_reply(messages: list[ChatMessage], language: str = "English") -> str:
     if not settings.SARVAM_API_KEY:
         raise HTTPException(status_code=503, detail="SARVAM_API_KEY is not configured")
-    client = SarvamAI(api_subscription_key=settings.SARVAM_API_KEY)
+    client = get_sarvam_client()
     response = client.chat.completions(
         model="sarvam-105b-conversations",
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "You are VaaniBuy, a friendly shopping assistant for India. "
+                    f"You are VaaniBuy, a friendly shopping assistant for India. "
+                    f"Reply in {language}. "
                     "Ask concise questions to understand items, quantity, budget, "
                     "brand preferences, substitutions, delivery timing, and address. "
                     "Ask only for details still missing. Never claim product stock, "
@@ -117,13 +142,74 @@ def chat(request: ChatRequest):
                     "itemized proposal in the app before a simulated order is created."
                 ),
             },
-            *[message.model_dump() for message in request.messages],
+            *[message.model_dump() for message in messages],
         ],
     )
     content = response.choices[0].message.content
     if not content:
         raise HTTPException(status_code=502, detail="Sarvam returned an empty reply")
-    return {"reply": content}
+    return content
+
+
+@router.post("/chat")
+def chat(request: ChatRequest):
+    return {"reply": _assistant_reply(request.messages)}
+
+
+@router.post("/voice/turn")
+async def voice_turn(
+    audio: UploadFile = File(...),
+    messages: str = Form(default="[]"),
+    language_code: str = Form(default="en-IN"),
+):
+    if not settings.SARVAM_API_KEY:
+        raise HTTPException(status_code=503, detail="SARVAM_API_KEY is not configured")
+    if language_code not in VOICE_LANGUAGES:
+        raise HTTPException(status_code=422, detail="Unsupported voice language")
+    if audio.content_type not in VOICE_AUDIO_TYPES:
+        raise HTTPException(status_code=415, detail="Unsupported audio format")
+
+    audio_bytes = await audio.read(MAX_VOICE_UPLOAD_BYTES + 1)
+    if not audio_bytes:
+        raise HTTPException(status_code=422, detail="Recorded audio is empty")
+    if len(audio_bytes) > MAX_VOICE_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Voice recording exceeds 10 MB")
+    try:
+        history = ChatRequest.model_validate_json(messages)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422, detail="Invalid conversation history"
+        ) from exc
+
+    client = get_sarvam_client()
+    transcript = client.speech_to_text.transcribe(
+        file=(audio.filename or "voice.webm", audio_bytes, audio.content_type),
+        model="saaras:v4",
+        mode="transcribe",
+        language_code=language_code,
+    )
+    text = transcript.transcript.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="No speech was recognized")
+
+    language = VOICE_LANGUAGES[language_code]
+    reply = _assistant_reply(
+        [*history.messages, ChatMessage(role="user", content=text)],
+        language,
+    )
+    speech = client.text_to_speech.convert(
+        text=reply[:2500],
+        model="bulbul:v3",
+        language_code=language_code,
+        speaker="simran",
+    )
+    return {
+        "transcript": text,
+        "reply": reply,
+        "audio_base64": "".join(speech.audios),
+        "audio_content_type": "audio/wav",
+        "demo_catalog": True,
+    }
 
 
 @router.post("/proposals", status_code=201)
@@ -146,15 +232,16 @@ def create_proposal(request: ProposalRequest):
         for product_id, quantity in quantities.items()
     ]
     subtotal = sum(item["price"] * item["quantity"] for item in items)
-    if request.budget is not None and subtotal > request.budget:
+    delivery_fee = 0 if subtotal >= 500 else 40
+    total = subtotal + delivery_fee
+    if request.budget is not None and total > request.budget:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Subtotal ₹{subtotal} is over the stated budget "
+                f"Proposal total ₹{total} exceeds the stated budget "
                 f"of ₹{request.budget}"
             ),
         )
-    delivery_fee = 0 if subtotal >= 500 else 40
     proposal_id = str(uuid.uuid4())
     with connect() as db:
         db.execute(
@@ -170,7 +257,7 @@ def create_proposal(request: ProposalRequest):
                 request.address.strip(),
                 subtotal,
                 delivery_fee,
-                subtotal + delivery_fee,
+                total,
             ),
         )
     return {
@@ -179,7 +266,7 @@ def create_proposal(request: ProposalRequest):
         "items": items,
         "subtotal": subtotal,
         "delivery_fee": delivery_fee,
-        "total": subtotal + delivery_fee,
+        "total": total,
         "budget": request.budget,
         "address": request.address.strip(),
         "demo": True,

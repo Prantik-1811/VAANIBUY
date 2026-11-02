@@ -6,6 +6,7 @@
 |---|---|---|
 | Demo product search | Working; sample catalog only | `app/api/routes.py`, `app/services/catalog.py` |
 | Sarvam shopping chat | Working when `SARVAM_API_KEY` is configured | `app/api/routes.py` |
+| Browser voice turn (Saaras transcription → Sarvam reply → Bulbul speech) | Working when `SARVAM_API_KEY` is configured | `app/api/routes.py`, `web/src/main.jsx` |
 | Itemized purchase proposal | Working; server recalculates prices and validates budget | `app/api/routes.py` |
 | Customer approval and order | Working; approval required, idempotent, simulated | `app/api/routes.py`, `app/services/store.py` |
 | Order history/details | Working; local SQLite | `app/api/routes.py`, `app/services/store.py` |
@@ -14,6 +15,13 @@
 
 `app/main.py` mounts the API and initializes the local database. SQLite data is
 stored in the ignored `data/` directory. No real order or charge is made.
+
+`POST /api/voice/turn` accepts multipart audio, conversation history, and a
+language code; it returns the transcript, assistant reply, and WAV audio.
+Recordings are limited to 10 MB in the API and 25 seconds in the browser.
+Sarvam Model API credentials stay server-side. This is separate from the
+managed Samvaad voice-agent SDK, which still needs valid app, organization, and
+workspace IDs and a server-side session/auth flow.
 
 ## Provider API modules needed before real launch
 
