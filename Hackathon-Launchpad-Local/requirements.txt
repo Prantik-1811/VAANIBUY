@@ -1,0 +1,8 @@
+sarvamai
+python-dotenv
+fastapi
+uvicorn[standard]
+pytest
+ruff
+httpx
+reportlab
